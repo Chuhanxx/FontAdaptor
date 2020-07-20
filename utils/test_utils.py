@@ -20,8 +20,8 @@ def select_test_font(evalset,root):
 	elif evalset == 'omniglot':
 		testfonts  = np.arange(0,20)
 
-	elif evalset == 'FontSync':
-		lines = open( osp.join(root,'gt/test_FontSync.txt'),'r').readlines()
+	elif evalset == 'FontSynth':
+		lines = open( osp.join(root,'gt/test_FontSynth.txt'),'r').readlines()
 		for line in lines:
 			testfonts.append(line.split('/')[-1].replace('.ttf','').replace('\n',''))
 

@@ -30,12 +30,12 @@ def main():
 	parser = argparse.ArgumentParser(description='GlyphAdaptor')
 
 	## data setting 
-	parser.add_argument('--root', default='',type=str)
+	parser.add_argument('--root', default='./data',type=str)
 	parser.add_argument('--load_height', default=32, type=int)
-	parser.add_argument('--evalset', default='FontSync', type=str,help='FontSync,Omniglot')
+	parser.add_argument('--evalset', default='FontSynth', type=str,help='FontSynth,Omniglot')
 
 	parser.add_argument("--val", dest="val", action = 'store_true')
-	parser.add_argument("--=visualize", dest="visualize", action = 'store_true')
+	parser.add_argument("--visualize", dest="visualize", action = 'store_true')
 	parser.add_argument("--cross", action = 'store_true',help="use training font as reference font")
 	parser.add_argument('--lang', default="EN", type=str,help='language for testing in Google1k ')
 
@@ -51,7 +51,7 @@ def main():
 
 
 	## output setting
-	parser.add_argument('--model_folder', default='./pretrained_model', type=str)
+	parser.add_argument('--model_folder', default='', type=str)
 
 	args = parser.parse_args()
 
@@ -73,7 +73,7 @@ def main():
 
 	###### setup fonts and alphabet converter ######
 	converter = strLabelConverter(args.alphabet)
-	if args.evalset =='FontSync':
+	if args.evalset =='FontSynth':
 		testfonts = select_test_font(args.evalset,args.root)
 	elif args.evalset == 'Omniglot':
 		testfonts  = np.arange(0,20)
@@ -103,8 +103,7 @@ def main():
 		raise Exception('checkpoint not specified')
 
 
-	ref_total_acc,ref_total_cer,ref_total_wer = 0,0,0
-
+	total_acc,total_cer,total_wer = 0,0,0
 	###### start testing ######
 	print('======== testing starts ========')
 	cudnn.benchmark = True
@@ -116,12 +115,11 @@ def main():
 			print('======== Using %s as reference font========'%args.ref_font)
 
 		total_correct,cers,wers,counter = 0,0,0,0
-
 		for test_font in testfonts:
 			args.fontname = test_font
 
 
-			if args.evalset == 'FontSync':
+			if args.evalset == 'FontSynth':
 				testset =  TestLoader(args,aug= False)
 			elif args.evalset == 'Omniglot':
 				testset =  Omniglot(args,root=args.root,alpha_ind = test_font ,background=False,size = 500)
@@ -189,9 +187,9 @@ def main():
 		result_file.write(total_summary)
 		result_file.close() 
 
-	ref_total_cer += total_cer / len(ref_fonts)
-	ref_total_wer += total_wer / len(ref_fonts)
-	ref_total_acc += total_acc / len(ref_fonts)
+	ref_total_cer = total_cer / len(ref_fonts)
+	ref_total_wer = total_wer / len(ref_fonts)
+	ref_total_acc = total_acc / len(ref_fonts)
 
 	if args.cross:
 
