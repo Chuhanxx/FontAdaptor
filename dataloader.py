@@ -233,7 +233,7 @@ class Omniglot(VisionDataset):
 		self._characters = [[c for c in list_dir(join(self.target_folder, a))] for a in self._alphabets]
 
 
-		self.text_list = open(os.path.join(self.root , 'gt', 'train_regular+bold+light+italic_50_resample.txt')).readlines()
+		self.text_list = open(os.path.join(self.root , 'gt', 'train/train_regular+bold+light+italic_50_resample.txt')).readlines()
 		self.txts = self.extract_txt()
 		self.color_jitter =transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.2)
 		self.ToPIL =  transforms.ToPILImage()

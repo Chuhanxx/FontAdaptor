@@ -21,6 +21,7 @@ git clone https://github.com/Chuhanxx/FontAdaptor.git
 2. Create conda virtual env and install the requirements  
 (This implementation requires CUDA and python > 3.7)
 ```
+cd FontAdaptor
 source build_venv.sh
 ```
 3. Download data for training and evalutaion.  
