@@ -59,7 +59,7 @@ Coming soon
 
 # Data
 
-Our FontSynth dataset can be downloaded directly from [here](http://www.robots.ox.ac.uk/~vgg/research/FontAdaptor20/FontSynth.tar).
+Our FontSynth dataset (16GB) can be downloaded directly from [here](http://www.robots.ox.ac.uk/~vgg/research/FontAdaptor20/FontSynth.tar).
 
 We take 1444 fonts from the [MJSynth dataset](https://www.robots.ox.ac.uk/~vgg/data/text/) and split them into five categories by their appearance attributes as determined from their names: (1) regular, (2) bold, (3) italic, (4) light, and (5) others (i.e., all fonts with none of the first four attributes in their name)  
 For train- ing, we select 50 fonts at random from each split and generate 1000 text-line and glyph images for each font. For testing, we use all the 251 fonts in category (5).
