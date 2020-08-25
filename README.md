@@ -1,6 +1,6 @@
 # [Adaptive Text Recognition through Visual Matching](http://www.robots.ox.ac.uk/~vgg/research/FontAdaptor20/)
 
-📋 This repository contains the data and implementation of ECCV2020 paper [Adaptive Text Recognition through Visual Matching]()
+📋 This repository contains the data and implementation of ECCV2020 paper [Adaptive Text Recognition through Visual Matching](http://www.robots.ox.ac.uk/~vgg/publications/2020/Zhang20/zhang20.pdf)
 
 # Abstract
 
