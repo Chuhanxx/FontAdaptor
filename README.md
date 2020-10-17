@@ -102,7 +102,7 @@ If you use this code etc., please cite the following paper:
 ```
 @inproceedings{zhang2020Adaptive,
   title={Adaptive Text Recognition through Visual Matching},
-  author={Chuhan Zhang, Ankush Gupta and Andrew Zisserman},
+  author={Chuhan Zhang and Ankush Gupta and Andrew Zisserman},
   booktitle={European Conference on Computer Vision (ECCV)},
   year={2020}
 }
