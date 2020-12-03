@@ -1,6 +1,6 @@
 mkdir -p data
 cd data
-wget http://www.robots.ox.ac.uk/~vgg/research/FontAdaptor20/FontSynth.tar
+wget http://www.robots.ox.ac.uk/~vgg/research/FontAdaptor20/FontSynth_v1.1.tar
 tar -xvf FontSynth.tar
 rm FontSynth.tar
 mkdir -p omniglot-py

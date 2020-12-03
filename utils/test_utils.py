@@ -3,21 +3,7 @@ import os.path as osp
 def select_test_font(evalset,root):
 
 	testfonts = []
-	if 'Google1k' in evalset:
-		fonts = cp.load(open(osp.join(root,'/google1000/google1k_proc/testfonts.pkl'),'rb'))
-		if '_' in evalset:
-			name = evalset.split('_')[-1]
-			testfonts = fonts[name]
-
-		else:
-			lines = open(osp.join(root,'/google1000/google1k_proc/testing.txt'),'r').readlines()
-			for line in lines:
-				volume = line.strip().split('\t')[0]
-				if volume not in testfonts:
-					testfonts.append(volume)
-
-
-	elif evalset == 'omniglot':
+	if evalset == 'omniglot':
 		testfonts  = np.arange(0,20)
 
 	elif evalset == 'FontSynth':

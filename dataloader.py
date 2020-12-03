@@ -4,17 +4,16 @@ import cv2
 import random
 import torch
 import glob
-import numpy as np
-import scipy
-import _pickle as cp
-import string
+import ast
 import torchvision
 
 from utils.utils import *
-from utils.img_utils import *
 from numpy.random import *
+from utils.img_utils import *
 
+import numpy as np
 import imgaug as ia
+import _pickle as cp
 import os.path as osp
 
 import torch.nn.functional as F
@@ -24,14 +23,260 @@ import torchvision.transforms.functional as functional
 
 from os.path import join
 from imgaug import augmenters as iaa
-from scipy.misc import imread, imresize
 from torch.utils.data import Dataset,Sampler
 from torch.nn.utils.rnn import pad_sequence
-from torch.utils.data import Dataset,Sampler
 from torchvision.datasets.vision import VisionDataset
 from torchvision.datasets.utils import list_dir
 from PIL import Image, ImageFile, ImageFilter,ImageOps
 ImageFile.LOAD_TRUNCATED_IMAGES = True
+
+
+
+
+class LineLoader(data.Dataset): 
+	def __init__(self, args, converter,aug=False,len = None):
+		self.args = args
+		self.root = args.root
+		self.converter = converter
+		self.args = args
+		self.cut =3
+
+		self.len = len
+		self.train_dir =join(self.root, 'gt/train')
+
+		self.trans = iaa.Sequential([
+				iaa.Sometimes(0.5,iaa.GaussianBlur(sigma=(0, 1.0))), # blur images with a sigma of 0 to 2.0
+				iaa.Sometimes(0.4,iaa.CoarseDropout((0.0, 0.03), size_percent=0.5)),
+				iaa.Sometimes(0.5,iaa.Add((-20,20),per_channel=0.5))
+				])
+		self.get_all_samples()
+		self.color_jitter =transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.5, hue=0.3)
+		self.shear = transforms.RandomAffine(0,shear =0.4)
+		self.char_aug_threshold = 0.5
+
+
+	def __len__(self):
+		if self.len is None:
+			return len(self.imgs)
+		else:
+			return self.len
+
+	def get_all_samples(self):
+		if self.args.trainset == 'attribute1':
+			self.train_list = open(join(self.train_dir, 'train_regular_50_resample.txt')).readlines()
+			self.imgs, self.labels,self.fonts, self.seg_labels = self.parse_samples(self.train_list)
+		if self.args.trainset == 'attribute2':
+			self.train_list = open(join(self.train_dir, 'train_regular+bold_50_resample.txt')).readlines()
+			self.imgs, self.labels,self.fonts, self.seg_labels = self.parse_samples(self.train_list)
+		if self.args.trainset == 'attribute3':
+			self.train_list = open(join(self.train_dir, 'train_regular+bold+light_50_resample.txt')).readlines()
+			self.imgs, self.labels,self.fonts, self.seg_labels = self.parse_samples(self.train_list)
+		if self.args.trainset == 'attribute4':
+			self.train_list = open(join(self.train_dir, 'train_regular+bold+light+italic_50_resample.txt')).readlines()
+			self.imgs, self.labels,self.fonts, self.seg_labels= self.parse_samples(self.train_list)
+		print('number of imgs:',len(self.imgs))
+
+
+	def parse_samples(self,img_list):
+		fonts,imgs,labels,seg_labels= [],[],[],[]
+
+		seg_map = cp.load(open(join(self.train_dir,'train_seg_map.pkl'),'rb'))
+		subdir = 'lines_byclusters'
+
+		for ind,line in enumerate(img_list):
+			parts = line.strip().split('\t')
+			h,w = ast.literal_eval(parts[3])
+			new_w = int(self.args.load_height*w/h)
+			if new_w>= 720*(self.args.load_height/32):continue
+
+			fonts.append(parts[0])
+			imgs.append(join(self.root,'ims',parts[0],subdir,parts[1]))
+			labels.append(parts[2])
+			seg_labels.append(torch.from_numpy(seg_map[parts[0]][parts[1]]))
+
+		return imgs,labels,fonts,seg_labels
+
+
+	def __getitem__(self, index):
+		converter = strLabelConverter(self.args.alphabet)
+		img = Image.open(self.imgs[index])
+
+		# resize image to constant height
+		w,h = img.size
+		new_w = int(self.args.load_height*w/h)
+		img= img.resize((new_w, self.args.load_height),
+			resample=Image.BILINEAR)
+
+		# sample from dataset
+		label = self.labels[index]
+		font = self.fonts[index]
+		seg_label = self.seg_labels[index]
+		self.char_dir =  join(self.root,'ims',font)
+
+		# load text-line image
+		img = functional.to_grayscale(img)
+		img = [np.expand_dims(img, axis=2)]
+		img = self.trans.augment_images(img)[0].astype(np.float32)
+		line_img = torch.from_numpy(img[:,:,0].transpose((1,0)))
+
+		# load glyph images and concatenate them 
+		imgs,ws,ws_ori,ww = [],[0],[0],[]
+		char_inds = np.arange(1,len(self.args.alphabet)-1).tolist()
+
+		if  self.args.char_aug and np.random.random() > self.char_aug_threshold:
+			self.char_aug_flag = True
+		else: 
+			self.char_aug_flag = False
+
+		for ind in char_inds:
+			char = self.args.alphabet[ind]
+			char_path = join(self.char_dir,'chars',char+'.png')
+			img = Image.open(char_path)
+			if  ind!=1 and self.char_aug_flag:
+				img,ww,ws,ws_ori = self.load_aug_char_img(img,ww,ws,ws_ori)
+			else:
+				img,ws,ws_ori = self.load_char_img(img,ws,ws_ori,ind)
+			imgs.append(torch.tensor(img))
+		char_img =torch.cat(imgs,1)
+		char_img,line_img,seg_label,ws,ws_ori = self.check_img_sz(char_img,line_img,seg_label,ws,ws_ori)
+
+		lengths = [line_img.shape[0],char_img.shape[0]]
+		char_img = F.pad(char_img,(0,0,0,self.args.d_model*2-char_img.shape[0]),'constant',0)
+		char_len = int((char_img.shape[0]/2)+0.5)
+		w_ratios = np.cumsum(ws)/char_img.shape[0]
+
+		# generate ground-truth segmentation of glyphs/characters 
+		#   -- char_seg_label: for supervision of the similarity map
+		#   -- char_seg_label2: for class aggregator in class prediction stage
+		#   the first one takes blank space between glyphs into account, the second one does not
+		char_seg_label,char_seg_label2 = self.generate_seg_map(w_ratios,char_inds,char_len)
+		seg_label = self.pad_seg_label(seg_label)
+
+		# pad line_img to a fixed size 
+		if self.args.d_model*2>=line_img.shape[0] and not self.args.baseline:
+			line_img = F.pad(line_img,(0,0,0,self.args.d_model*2-line_img.shape[0]),'constant',0)
+
+		# convert ground-truth texts to inds 
+		text, _ = converter.encode(label) # text to list of inds
+		text = torch.IntTensor((text + [len(self.args.alphabet)-1] * int((line_img.shape[0]/2)+0.5))[:int((line_img.shape[0]/2)+0.5)])
+		return [line_img, char_img], char_seg_label, text,seg_label,lengths,char_seg_label2, True
+
+
+	def load_aug_char_img(self,img,ww,ws,ws_ori):
+		top,bottom = locate_margin(img)
+		margin =np.random.randint(-1,2)
+		right = max(5,img.size[0]-3-margin)
+
+		img = random_crop(top,bottom,3+margin,right,img)
+		img = random_pad(img)
+		img= resize_im_fixed_h(img,self.args.load_height)
+		left,right = locate_margin(img,axis='w')
+		img = self.color_jitter(img)
+
+		if np.random.random()<0.5:
+			img =  img.filter(ImageFilter.GaussianBlur(radius=0.6))
+		if np.random.random()<0.3:
+			img = self.shear(img)
+
+		img =  np.array(functional.to_grayscale(img)).astype(np.float32)
+		ws.extend((left,right-left,img.shape[1]-right))
+		ww.append(right-left)
+		ws_ori.extend((0,img.shape[1],0))
+		return img,ww,ws,ws_ori
+
+
+
+	def load_char_img(self,img,ws,ws_ori,n):
+		img = resize_im_fixed_h(img,self.args.load_height)
+		img =  np.array(functional.to_grayscale(img)).astype(np.float32)
+		if img.shape[0]<=self.args.load_height and n !=0 and img.shape[1]> self.cut*2+1:
+			img = img[:,self.cut+1:-self.cut]
+		elif img.shape[0] > self.args.load_height:
+			margin = int(np.floor(self.args.load_height*3/img.shape[0]))
+			img = img[:,margin:self.args.load_height-margin]
+
+		# smooth the background
+		img[img>150] = 185
+
+		if not self.char_aug_flag: 
+			ws.append(img.shape[1])
+			ws_ori.append(img.shape[1])
+		else:
+			ws.extend((0,img.shape[1],0))
+			ws_ori.extend((0,img.shape[1],0))
+		return img,ws,ws_ori
+
+
+	def resize_char_img(self,char_img,ws,ws_ori):
+		old_w = char_img.shape[1]
+		char_img =  resize_im_fixed_w(Image.fromarray(char_img[:,:,0]),self.args.d_model*2,self.args.load_height)
+		char_img = np.array(char_img).astype(np.float32)
+		ratio = 2*self.args.d_model/old_w
+		ws = [w*ratio for w in ws]
+		ws_ori = [w*ratio for w in ws_ori]
+		return char_img,ws,ws_ori
+
+
+	def enlarge_imgs(self,char_img,line_img,seg_label,ws,ws_ori):
+		ws = [w*2 for w in ws]
+		ws_ori = [w*2 for w in ws_ori]
+		char_img = char_img.repeat_interleave(2,0)
+		line_img = line_img.repeat_interleave(2,0)
+		seg_label = seg_label.repeat_interleave(2,0)
+		return char_img,line_img,seg_label,ws,ws_ori
+
+
+	def check_img_sz(self,char_img,line_img,seg_label,ws,ws_ori):
+		# resize images if too large
+		avg_w = np.mean(ws)
+		if int((char_img.shape[1]/2)+0.5) >=self.args.d_model:
+			char_img,ws,ws_ori =self.resize_char_img(self,char_img,ws,ws_ori)
+		char_img = torch.transpose(char_img,0,1) #[H,W] --> [W,H]
+
+		# resize images if too small
+		if avg_w <=8*(self.args.load_height/32) \
+			and char_img.shape[0]<= self.args.d_model \
+			and line_img.shape[0]< self.args.d_model:
+			
+			char_img,line_img,seg_label,ws,ws_ori = \
+			self.enlarge_imgs(char_img,line_img,seg_label,ws,ws_ori)
+		return char_img,line_img,seg_label,ws,ws_ori
+
+
+	def generate_seg_map(self,w_ratios,char_inds,char_len):
+		# for supervision of the similarity map, high resolution
+		char_seg_label =torch.zeros(self.args.d_model).fill_(len(self.args.alphabet)-1) #[27,W/2]
+		# for class aggregator, does not care about the blank space between glyphs
+		char_seg_label2 =torch.zeros(self.args.d_model).fill_(len(self.args.alphabet)-1)  
+
+		if not self.char_aug_flag:
+			for w_ind in range(len(w_ratios)-1):
+				w_ratio1 = w_ratios[w_ind]* char_len
+				w_ratio2 = w_ratios[w_ind+1]* char_len
+
+				char_seg_label[int(w_ratio1):int(w_ratio2)] = float(char_inds[w_ind])
+				char_seg_label2[int(w_ratio1):int(w_ratio2)] = float(char_inds[w_ind])
+		else:
+			for i in range(len(w_ratios)//3):
+				bound1 = w_ratios[3*i]* char_len
+				start = w_ratios[3*i+1]* char_len
+				end = w_ratios[3*i+2]* char_len
+				bound2 =  w_ratios[3*i+3]* char_len
+
+				char_seg_label[int(bound1):int(start)] = float(char_inds[0])
+				char_seg_label[int(start):int(end)] = float(char_inds[i])
+				char_seg_label[int(end):int(bound2)] = float(char_inds[0])
+				char_seg_label2[int(bound1):int(bound2)] = float(char_inds[i])
+		return char_seg_label,char_seg_label2
+			
+
+	def pad_seg_label(self,seg_label):
+		if self.args.d_model>seg_label.shape[0]:
+			fill = torch.ones(self.args.d_model-seg_label.shape[0])
+			fill = fill.fill_(len(self.args.alphabet)-2).to(torch.float64)
+			seg_label = torch.cat([seg_label,fill],dim=0)
+		return seg_label
+
 
 
 class TestLoader(data.Dataset):
@@ -39,8 +284,12 @@ class TestLoader(data.Dataset):
 		self.args = args
 		self.root =  args.root
 		self.ims_dir = join(self.root,'ims')
-		self.file = join(self.root ,'gt/test/test_'+self.args.fontname+'.txt')
-		self.subdir = 'test_new'
+		if args.evalset == '100':
+			self.file = join(self.root ,'gt/val/test_'+self.args.fontname+'.txt')
+			self.subdir = 'val'
+		elif args.evalset == 'FontSynth':
+			self.file = join(self.root ,'gt/test/test_'+self.args.fontname+'.txt')
+			self.subdir = 'test_new'
 		self.char_folder =  'chars'
 
 		self.cut =3
@@ -216,8 +465,7 @@ class Omniglot(VisionDataset):
 	"""
 	folder = 'omniglot-py'
 
- 
-	def __init__(self, args,root = '',alpha_ind=None, 
+	def __init__(self, args,root,alpha_ind=None, 
 					background=True,selected_chars = None,size=15000):
 		super(Omniglot, self).__init__(root)
 		self.background = background # True for training, False for testing 
@@ -395,7 +643,7 @@ class Omniglot(VisionDataset):
 
 		else:
 			imgs = pad_sequence([line_img, char_line_img],batch_first=True)
-			return imgs, char_seg_labels, text, lengths,self.args.alphabet,0
+			return imgs, char_seg_labels, text, lengths,self.args.alphabet, False
    
 
 
@@ -461,11 +709,13 @@ class Omniglot(VisionDataset):
 	def load_img(self,path,blank_width,idx,aug=True):
 		img = Image.open(path, mode='r').convert('L')
 		img = img.resize(( self.args.load_height, self.args.load_height),resample=Image.BILINEAR)
+
 		img = torchvision.transforms.functional.affine(img, self.rotations[idx],(0,0), 1, self.shears[idx], resample=0, fillcolor=255)
 		if  self.rotations[idx] %3 ==0:
 			img = torchvision.transforms.functional.hflip(img)
 		if  self.rotations[idx] %5 ==0:
 			img = torchvision.transforms.functional.vflip(img)
+
 		img = img.filter(ImageFilter.MinFilter(self.dilation_k))
 		img = torch.tensor(np.array(img).astype(np.float32)).unsqueeze(0)
 		img[img>120] = self.bg
@@ -514,3 +764,43 @@ class Omniglot(VisionDataset):
 		ws_ori.extend((0,img.shape[-1],0))
 		return img,ws,ws_ori
 
+
+
+def text_collate(batch):	
+	imgs,labels,seg_labels,char_seg_labels,char_seg_labels2,img_lengths = [],[],[],[],[],[]
+	for sample in batch:
+		img_lengths.append(sample[0][0].shape[0])
+	batch_size = len(batch)
+	sorted_idx = np.argsort(img_lengths)[::-1]
+	batch = [batch[i] for i in sorted_idx]
+	lengths,inds = [],[]
+
+	for ind,sample in enumerate(batch):
+		#[line_img, char_img], char_seg_label, seg_label, text
+		for i in range(len(sample[0])):
+			imgs.append(sample[0][i]) # list of [W,H]s
+		lengths.append(sample[4][0])
+		lengths.append(sample[4][1])
+		char_seg_labels.append(sample[1]) 
+		char_seg_labels2.append(sample[5]) 
+		seg_labels.append(sample[3])
+		labels.append(sample[2])
+		if sample[-1]: inds.append(ind)
+
+
+	# cross-font matching
+	for i in range(len(inds)//2):
+		swap1,swap2 = np.random.choice(inds,size=2)
+		
+		imgs[swap1*2+1],imgs[swap2*2+1] =imgs[swap2*2+1],imgs[swap1*2+1]
+		lengths[swap1*2+1],lengths[swap2*2+1] = lengths[swap2*2+1],lengths[swap1*2+1]
+		char_seg_labels[swap1],char_seg_labels[swap2] =char_seg_labels[swap2],char_seg_labels[swap1]
+		char_seg_labels2[swap1],char_seg_labels2[swap2] =char_seg_labels2[swap2],char_seg_labels2[swap1]
+
+	img_lengths = torch.IntTensor([int((i/2)+0.5) for i in lengths])
+	imgs =  pad_sequence(imgs,batch_first=True,padding_value=0)
+	char_seg_labels = torch.stack(char_seg_labels,dim=0)
+	char_seg_labels2 = torch.stack(char_seg_labels2,dim=0)
+	seg_labels =  pad_sequence(seg_labels,batch_first=True,padding_value=27)
+	labels = pad_sequence(labels,batch_first=True,padding_value=28).view(-1)
+	return imgs, labels,  char_seg_labels, img_lengths,seg_labels,char_seg_labels2

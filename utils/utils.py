@@ -156,8 +156,6 @@ def lex_free_acc(preds,labels,converter,loss,converter_gt =None,HTR = False):
 	output: acc and two strings
 	ind: which sample in the batch you want to decode
 	"""
-	replace = {'ô':'ô','û':'û','è':'è','ê':'ê','î':'î','é':'é','à':'à','â':'â','ï':'ï','ù':'ù','û':'û','ü':'ü','ë':'ë','ò':'ò','ú':'ú','ó':'ó','ñ':'ñ','á':'á','í':'í','ñ':'ñ'}
-
 	sen_correct,cer,total_char,total_wrds,wer = 0.,0.,0.,0.,0.
 	cers = []
 	pred_strs,gt_strs = [],[]
@@ -216,7 +214,7 @@ def lex_free_acc(preds,labels,converter,loss,converter_gt =None,HTR = False):
 	cer_p = cer / total_char
 	wer = wer/ total_wrds
 
-	return sen_acc,cer_p,wer,pred_strs,gt_strs,cers
+	return sen_acc,cer_p,wer,pred_strs,gt_strs
 
 
 
@@ -337,18 +335,22 @@ def count_rep2(x):
 def compute_logits(x,char_seg_labels,num_classes):
 
 	# x [B,1,W,H]
-	onehot = torch.FloatTensor(x.shape[0],num_classes,x.shape[-1]).cuda() #[B,CLASS,H]
-	onehot.zero_()
+	# generate glyph-width map M
+	onehot = torch.zeros(x.shape[0],num_classes,x.shape[-1]).cuda() #[B,CLASS,H]
 	ones = torch.ones(char_seg_labels.unsqueeze(1).shape).cuda()
 	onehot.scatter_(1, char_seg_labels.unsqueeze(1).long(), ones)
 	label_map = torch.stack([onehot]*x.shape[2],dim=2) #[B,class,W,H]
+
+	# compute class predictions
 	logits = (x.expand_as(label_map))* label_map
 	nonzeros = x.shape[-1] - (logits == 0).sum(dim=-1) 
 	ones = torch.ones(nonzeros.shape).cuda().to(torch.int64)
 	nonzeros = torch.where(nonzeros <ones,ones,nonzeros)
 	logits = logits.sum(-1)/nonzeros.to(torch.float32)
+	logits = logits.transpose(1,2)
 
-	return logits.transpose(1,2)
+	return  logits.reshape(-1, num_classes)
+
 
 
 def crop_patches(imgs,seg,counter,volume):

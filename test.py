@@ -102,7 +102,6 @@ def main():
 	else:
 		raise Exception('checkpoint not specified')
 
-
 	total_acc,total_cer,total_wer = 0,0,0
 	###### start testing ######
 	print('======== testing starts ========')
@@ -122,7 +121,7 @@ def main():
 			if args.evalset == 'FontSynth':
 				testset =  TestLoader(args,aug= False)
 			elif args.evalset == 'Omniglot':
-				testset =  Omniglot(args,root=args.root,alpha_ind = test_font ,background=False,size = 500)
+				testset =  Omniglot(args,args.root,alpha_ind = test_font ,background=False,size = 500)
 
 
 			seq_sampler = data.SequentialSampler(testset)
@@ -141,10 +140,7 @@ def main():
 				labels = labels.long().to(device) #[batch*len]
 
 				preds,sims,final_conv = net(imgs,char_seg_label,length.long(),char_seg_label) #[batch,len,classes]
-				correct,cer,wer,pred_str,gt_str, _ = lex_free_acc(preds,labels,converter,'ctc',converter_gt = converter_gt)
-				probs = torch.softmax(preds[0],dim=-1).detach().cpu().numpy()
-				labels = labels.view(preds.shape[0],-1)
-				label = labels[0].detach().cpu().numpy()
+				correct,cer,wer,pred_str,gt_str = lex_free_acc(preds,labels,converter,'ctc',converter_gt = converter_gt)
 
 				counter += 1
 
@@ -159,7 +155,8 @@ def main():
 				cers += cer 
 				wers += wer
 
-			font_summary = str(args.fontname)+'\t CER: '+str(np.mean(cer_font))+'\t WER: '+str(np.mean(wer_font))
+			font_summary = 'font: %s CER: %.1f  WER: %.1f' %(test_font,np.mean(cer_font)*100,np.mean(cer_font)*100)
+
 			print(font_summary)
 			font_logs.append(font_summary)
 
@@ -170,7 +167,7 @@ def main():
 		if not args.cross:
 			args.ref_font = 'itself' 
 
-		total_summary = 'ref_font=%s cer = %f wer = %f accuracy=%f total_samples= %d'%(args.ref_font,total_cer,total_wer,total_acc,counter)
+		total_summary = 'ref_font=%s cer = %.1f wer = %.1f accuracy=%.1f total_samples= %d'%(args.ref_font,total_cer*100,total_wer*100,total_acc*100,counter)
 		print('----------')
 		print(total_summary)
 		print('----------')
@@ -195,7 +192,7 @@ def main():
 
 		print('======================================================')
 		print('Total results over all reference fonts')
-		print('cer = %f wer = %f accuracy=%f  total_ref_fonts=%d '%(ref_total_cer,ref_total_wer,ref_total_acc,len(ref_fonts)))
+		print('cer = %.1f wer = %.1f accuracy=%.1f  total_ref_fonts=%d '%(ref_total_cer*100,ref_total_wer*100,ref_total_acc*100,len(ref_fonts)))
 		print('======================================================')
 
 

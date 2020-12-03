@@ -123,6 +123,8 @@ class main_model (nn.Module):
         x = self.relu(x)
         x_1 = self.layer1(x)
         x_2 = self.layer2(x_1) 
+
+        # upsample
         x_up = self.upsample(x_2) 
         if x_up.shape[-1]!=x_1.shape[-1]:
             x_up= self.padding(x_up)
@@ -130,7 +132,8 @@ class main_model (nn.Module):
         x = self.down_channel(x) 
         x = self.avgpool(x) 
         x = self.down(x) 
-        # making maps
+
+        # make similarity maps
         x = x.view(x.shape[0],-1,x.shape[-1]) 
         x = x/(torch.norm(x,dim=1,keepdim=True) + 1e-6)
         return x
@@ -153,8 +156,10 @@ class main_model (nn.Module):
             x = (x/255.0 - 0.5)/0.5
             x1 = x[1::2,:,:]
             x2 = x[0::2,:,:]
+
         x2 = self.encoder(x2)
         x1 = self.encoder(x1)
+
         im_len = torch.max(img_lengths[0::2])
         char_lines  = x1[:,:,:self.d_model]
         lines = x2[:,:,:im_len]
@@ -167,6 +172,7 @@ class main_model (nn.Module):
         # decoding 
         x,embed = self.decoder(sim_map)
         logits,x_ff = self.attn(x,char_seg_labels2)
+        logits += 1e-10 
 
         if self.args.TPS:
             return logits, sim_map_0,trans_im,seg_labels
