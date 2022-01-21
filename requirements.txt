@@ -2,7 +2,7 @@ editdistance==0.5.3
 glob2==0.7
 imgaug==0.2.9
 ipdb==0.12.2
-ipython==7.6.1
+ipython==7.16.3
 joblib==0.13.2
 json5==0.8.4
 matplotlib==3.0.3
