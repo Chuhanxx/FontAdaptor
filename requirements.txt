@@ -3,7 +3,7 @@ glob2==0.7
 imgaug==0.2.9
 ipdb==0.12.2
 ipython==7.6.1
-joblib==0.13.2
+joblib==1.2.0
 json5==0.8.4
 matplotlib==3.0.3
 Pillow==6.1.0
