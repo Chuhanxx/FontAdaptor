@@ -6,7 +6,7 @@ ipython==7.6.1
 joblib==0.13.2
 json5==0.8.4
 matplotlib==3.0.3
-Pillow==6.1.0
+Pillow==9.3.0
 pycairo==1.18.1
 scikit-image==0.15.0
 scikit-learn==0.21.1
